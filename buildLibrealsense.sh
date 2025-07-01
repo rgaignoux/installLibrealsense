@@ -8,80 +8,14 @@ INSTALL_DIR=$PWD
 NVCC_PATH=/usr/local/cuda/bin/nvcc
 
 USE_CUDA=true
-
-function usage ()
-{
-    echo "Usage: ./buildLibrealsense.sh [-n | -no_cuda] [-v | -version <version>] [-j | --jobs <number of jobs>] [-h | --help] "
-    echo "-n  | --no_cuda   Build with no CUDA (Defaults to with CUDA)"
-    echo "-v  | --version   Version of librealsense to build 
-                      (defaults to latest release)"
-    echo "-j  | --jobs      Number of concurrent jobs (Default 1 on <= 4GB RAM
-                      #of cores-1 otherwise)"
-    echo "-h  | --help      This message"
-    exit 2
-}
-
-PARSED_ARGUMENTS=$(getopt -a -n buildLibrealsense.sh -o nv:j:h --longoptions version:,no_cuda,jobs:,help -- "$@" )
-VALID_ARGUMENTS=$?
-
-if [ "$VALID_ARGUMENTS" != "0" ]; then
-   echo ""
-   usage
-fi
-
-eval set -- "$PARSED_ARGUMENTS"
-
-LIBREALSENSE_VERSION=""
-USE_CUDA=true
-NUM_PROCS=""
-
-while :
-do
-   case "$1" in
-      -n | --build_no_cuda) USE_CUDA=false   ; shift ;;
-      -v | --version )      LIBREALSENSE_VERSION="$2" ; shift 2 ;;
-      -j | --jobs)          NUM_PROCS="$2" ; 
-                            shift 2 ;
-                            re_isanum='^[0-9]+$'
-                            if ! [[ $NUM_PROCS =~ $re_isanum ]] ; then
-                              echo "Number of jobs must be a positive, whole number"
-                              usage
-                            else
-                              if [ $NUM_PROCS -eq "0" ]; then
-                                echo "Number of jobs must be a positive, whole number" 
-                              fi
-                            fi ;
-       ;;
-      -h | --help )         usage ; shift ;;
-      # -- means the end of arguments
-      --)  shift; break ;;
-   esac
-done
-
-# From lukechilds gist discussion: https://gist.github.com/lukechilds/a83e1d7127b78fef38c2914c4ececc3c 
-# We use wget instead of curl here
-# Sample usage:
-#   VERSION_STRINGS=$(get_latest_release IntelRealSense/librealsense)
-
-function get_latest_release () {
-  # redirect wget to standard out and grep out the tag_name
-  wget -qO- https://api.github.com/repos/$1/releases/latest |
-    grep -Po '"tag_name": "\K.*?(?=")' 
-}
-
-if [[ $LIBREALSENSE_VERSION == "" ]] ; then
-   echo "Getting latest librealsense version number"
-   LIBREALSENSE_VERSION=$(get_latest_release IntelRealSense/librealsense)
-fi
+NUM_PROCS=1
 
 echo "Build with CUDA: "$USE_CUDA
-echo "Librealsense Version: $LIBREALSENSE_VERSION"
 
 red=`tput setaf 1`
 green=`tput setaf 2`
 reset=`tput sgr0`
 # e.g. echo "${red}The red tail hawk ${green}loves the green grass${reset}"
-
 
 echo ""
 echo "Please make sure that no RealSense cameras are currently attached"
@@ -89,38 +23,17 @@ echo ""
 read -n 1 -s -r -p "Press any key to continue"
 echo ""
 
-if [ ! -d "$LIBREALSENSE_DIRECTORY" ] ; then
-  # clone librealsense
-  cd ${HOME}
-  echo "${green}Cloning librealsense${reset}"
-  git clone https://github.com/IntelRealSense/librealsense.git
-fi
-
-# Is the version of librealsense current enough?
-cd $LIBREALSENSE_DIRECTORY
-VERSION_TAG=$(git tag -l $LIBREALSENSE_VERSION)
-if [ ! $VERSION_TAG  ] ; then
-   echo ""
-  tput setaf 1
-  echo "==== librealsense Version Mismatch! ============="
-  tput sgr0
-  echo ""
-  echo "The installed version of librealsense is not current enough for these scripts."
-  echo "This script needs librealsense tag version: "$LIBREALSENSE_VERSION "but it is not available."
-  echo "Please upgrade librealsense or remove the librealsense folder before attempting to install again."
-  echo ""
-  exit 1
-fi
-
-# Checkout version the last tested version of librealsense
-git checkout $LIBREALSENSE_VERSION
-
 # Install the dependencies
 cd $INSTALL_DIR
 sudo ./scripts/installDependencies.sh
 
+cd $HOME
+wget https://github.com/IntelRealSense/librealsense/archive/refs/tags/v2.50.0.zip -O librealsense-2.50.0.zip
+unzip librealsense-2.50.0.zip
+mv librealsense-2.50.0 librealsense
+rm librealsense-2.50.0.zip
+
 cd $LIBREALSENSE_DIRECTORY
-git checkout $LIBREALSENSE_VERSION
 
 # Now compile librealsense and install
 mkdir build 
@@ -132,7 +45,7 @@ export CUDACXX=$NVCC_PATH
 export PATH=${PATH}:/usr/local/cuda/bin
 export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/cuda/lib64
 
-/usr/bin/cmake ../ -DBUILD_EXAMPLES=true -DFORCE_LIBUVC=ON -DBUILD_WITH_CUDA="$USE_CUDA" -DCMAKE_BUILD_TYPE=release -DBUILD_PYTHON_BINDINGS=bool:true
+/usr/bin/cmake ../ -DBUILD_EXAMPLES=true -DFORCE_LIBUVC=ON -DBUILD_WITH_CUDA="$USE_CUDA" -DCMAKE_BUILD_TYPE=release
 
 # The library will be installed in /usr/local/lib, header files in /usr/local/include
 # The demos, tutorials and tests will located in /usr/local/bin.
@@ -194,6 +107,3 @@ echo "The demos and tools are located in /usr/local/bin"
 echo " "
 echo " -----------------------------------------"
 echo " "
-
-
-
